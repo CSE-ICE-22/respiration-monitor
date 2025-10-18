@@ -19,6 +19,7 @@ public:
     void unmute();
     void update();
     bool isBuzzerActive();
+    bool isBuzzerMuted();
     void playWelcomeSound();
 
 };

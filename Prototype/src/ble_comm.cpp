@@ -1,4 +1,5 @@
 #include "ble_comm.h"
+#include "buzzer.h"
 
 BLEManager bleManager;
 
@@ -76,18 +77,55 @@ void BLEManager::sendSensorData(const SensorData& data, AlertLevel alertLevel) {
     packet.temperature = (int16_t)(data.temperature_celsius * 10);
     packet.alert = (uint8_t)alertLevel;
     packet.status = data.valid ? 0x01 : 0x00;
+    if (buzzerManager.isBuzzerMuted()) {
+        packet.status |= 0x02; // Set bit 1 for muted
+    }
     packet.timestamp = (uint32_t)(millis() / 1000); // seconds since boot
     packet.sequence = sequenceNumber++;
+    memset(packet.reserved, 0, sizeof(packet.reserved));
 
     // Send binary data
     dataCharacteristic->setValue((uint8_t*)&packet, sizeof(packet));
     dataCharacteristic->notify();
 
-    Serial.printf("Sent binary packet - CO2: %d ppm, Temp: %d.%d°C, Hum: %d.%d%%, Alert: %d, Seq: %d\n", 
+    Serial.printf("Sent packet - CO2: %d ppm, Temp: %d.%d°C, Hum: %d.%d%%, Alert: %d, Muted: %s, Seq: %d\n", 
                   packet.co2, 
                   packet.temperature / 10, abs(packet.temperature % 10),
                   packet.humidity / 10, abs(packet.humidity % 10),
                   packet.alert,
+                  (packet.status & 0x02) ? "Yes" : "No",
+                  packet.sequence);
+}
+
+void BLEManager::sendAverageData(const AverageData& data, AlertLevel alertLevel) {
+    if (!deviceConnected || !dataCharacteristic) {
+        return;
+    }
+
+    // Create compact binary packet with average data
+    SensorPacket packet;
+    packet.co2 = (uint16_t)data.avg_co2_ppm;
+    packet.humidity = (int16_t)(data.avg_humidity_percent * 10);
+    packet.temperature = (int16_t)(data.avg_temperature_celsius * 10);
+    packet.alert = (uint8_t)alertLevel;
+    packet.status = data.valid ? 0x81 : 0x80; // Bit 7 set indicates average data
+    if (buzzerManager.isBuzzerMuted()) {
+        packet.status |= 0x02; // Set bit 1 for muted
+    }
+    packet.timestamp = (uint32_t)(millis() / 1000); // seconds since boot
+    packet.sequence = sequenceNumber++;
+    memset(packet.reserved, 0, sizeof(packet.reserved));
+
+    // Send binary data
+    dataCharacteristic->setValue((uint8_t*)&packet, sizeof(packet));
+    dataCharacteristic->notify();
+
+    Serial.printf("Sent AVG packet - CO2: %d ppm, Temp: %d.%d°C, Hum: %d.%d%%, Alert: %d, Muted: %s, Seq: %d\n", 
+                  packet.co2, 
+                  packet.temperature / 10, abs(packet.temperature % 10),
+                  packet.humidity / 10, abs(packet.humidity % 10),
+                  packet.alert,
+                  (packet.status & 0x02) ? "Yes" : "No",
                   packet.sequence);
 }
 
@@ -110,8 +148,21 @@ bool BLEManager::hasTimedOut() {
 void BLEManager::stop() {
     if (server) {
         server->getAdvertising()->stop();
-        Serial.println("BLE advertising stopped");
     }
+}
+
+void BLEManager::restart() {
+    if (server) {
+        bleStartTime = millis(); // Reset timeout
+        if (!deviceConnected) {
+            server->startAdvertising();
+            Serial.println("BLE advertising restarted");
+        }
+    }
+}
+
+unsigned long BLEManager::getConnectionTime() {
+    return millis() - bleStartTime;
 }
 
 // Server callback implementations

@@ -2,26 +2,21 @@
 #define CONFIG_H
 
 // Pin definitions
-#define I2C_SDA_PIN         21    // SDA pin for ENS160 + AHT21 sensors
-#define I2C_SCL_PIN         22    // SCL pin for ENS160 + AHT21 sensors
-#define BUTTON_PIN          14    // Push button pin (with internal pull-up)
-#define BUZZER_PIN          4     // Buzzer PWM pin
+#define I2C_SDA_PIN         8
+#define I2C_SCL_PIN         9
+#define BUTTON_PIN          10
+#define BUZZER_PIN          20
 
-// Wake up source
-#define BUTTON_PIN_BITMASK  (1ULL << BUTTON_PIN)
-
-// Alert thresholds (CO2 in ppm)
-#define CO2_THRESHOLD_LOW    1000
-#define CO2_THRESHOLD_MED    5000
-#define CO2_THRESHOLD_HIGH   10000
+#define CO2_THRESHOLD_HIGH       1000   // Alert if average CO2 > 1000 ppm
+#define TEMP_THRESHOLD_HIGH      40.0   // Alert if average temperature > 30°C
+#define HUMIDITY_THRESHOLD_HIGH  80.0   // Alert if average humidity > 70%
 
 // Alert levels
 enum AlertLevel {
     ALERT_NONE = 0,
-    ALERT_LOW = 1,     // CO2 > 1000 ppm
-    ALERT_MEDIUM = 2,  // CO2 > 5000 ppm
-    ALERT_HIGH = 3,     // CO2 > 10000 ppm
-    ALERT_CRITICAL = 4  // Critical alert level
+    ALERT_LOW = 1,
+    ALERT_MEDIUM = 2,
+    ALERT_HIGH = 3,
 };
 
 // Sensor data structure
@@ -33,27 +28,41 @@ struct SensorData {
     unsigned long timestamp;
 };
 
-// System states
-enum SystemState {
-    STATE_SLEEPING,
-    STATE_WAKING_UP,
-    STATE_READING_SENSORS,
-    STATE_PROCESSING_ALERTS,
-    STATE_BLE_COMMUNICATION,
-    STATE_PREPARING_SLEEP
+// Average data structure (for 1-minute averages)
+struct AverageData {
+    float avg_co2_ppm;
+    float avg_humidity_percent;
+    float avg_temperature_celsius;
+    bool valid;
+    unsigned long timestamp;
 };
 
 // Timing constants
-#define BUTTON_DEBOUNCE_MS      50
-#define BUTTON_HOLD_TIME_MS     2000
-#define SENSOR_READ_INTERVAL_MS 1000
-#define BLE_TIMEOUT_MS          30000
-#define BUZZER_TIMEOUT_MS       10000
+#define BUTTON_DEBOUNCE_MS          50
+#define BUTTON_HOLD_TIME_MS         2000
+#define SENSOR_READ_INTERVAL_MS     15000    // Read sensors every 15 seconds
+#define SAMPLES_PER_MINUTE          4        // 4 samples of 15s = 1 minute
+#define DATA_SEND_INTERVAL_MS       60000    // Send data every 1 minute
+#define BLE_TIMEOUT_MS              300000   // 5 minutes (300,000 ms)
+#define BUZZER_TIMEOUT_MS           10000
 
 // BLE constants
 #define BLE_DEVICE_NAME         "RespirationMonitor"
 #define BLE_SERVICE_UUID        "12345678-1234-1234-1234-123456789abc"
 #define BLE_CHAR_DATA_UUID      "87654321-4321-4321-4321-cba987654321"
 #define BLE_CHAR_CONTROL_UUID   "11111111-2222-3333-4444-555555555555"
+
+// System states
+enum SystemState {
+    STATE_WAKING_UP = 0,
+    STATE_READING_SENSORS = 1,
+    STATE_PROCESSING_DATA = 2,
+    STATE_CHECKING_ALERTS = 3,
+    STATE_BLE_COMMUNICATION = 4,
+    STATE_LIGHT_SLEEP = 5,
+    STATE_PREPARING_DEEP_SLEEP = 6
+};
+
+extern SystemState currentState;
 
 #endif // CONFIG_H

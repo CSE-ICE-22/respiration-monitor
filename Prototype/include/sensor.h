@@ -14,6 +14,11 @@ private:
     bool initialized;
     unsigned long lastReadTime;
     SensorData lastReading;
+    
+    // Data averaging
+    SensorData sampleBuffer[SAMPLES_PER_MINUTE];
+    int currentSampleIndex;
+    int samplesCollected;
 
 public:
     SensorManager();
@@ -23,6 +28,13 @@ public:
     void reset();
     SensorData getLastReading();
     AlertLevel getAlertLevel(float co2_ppm);
+    
+    // New averaging functions
+    void addSample(const SensorData& data);
+    bool hasEnoughSamples();
+    AverageData calculateAverage();
+    void resetSamples();
+    bool checkThresholds(const AverageData& avgData, bool& co2Alert, bool& tempAlert, bool& humidityAlert);
 };
 
 extern SensorManager sensorManager;
