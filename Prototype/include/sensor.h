@@ -27,14 +27,13 @@ public:
     bool isReady();
     void reset();
     SensorData getLastReading();
-    AlertLevel getAlertLevel(float co2_ppm);
+    AlertLevel getAlertLevel(AverageData& data);
     
     // New averaging functions
     void addSample(const SensorData& data);
     bool hasEnoughSamples();
     AverageData calculateAverage();
     void resetSamples();
-    bool checkThresholds(const AverageData& avgData, bool& co2Alert, bool& tempAlert, bool& humidityAlert);
 };
 
 extern SensorManager sensorManager;

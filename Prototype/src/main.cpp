@@ -210,18 +210,8 @@ void processAlerts() {
         return;
     }
     
-    // Check thresholds
-    bool anyAlert = sensorManager.checkThresholds(currentAverageData, co2Alert, tempAlert, humidityAlert);
-    
-    if (anyAlert) {
-        if (co2Alert) {
-            currentAlert = ALERT_HIGH;
-        } else if (tempAlert || humidityAlert) {
-            currentAlert = ALERT_MEDIUM;
-        } else {
-            currentAlert = ALERT_LOW;
-        }
-        
+    AlertLevel alert = sensorManager.getAlertLevel(currentAverageData); 
+    if (alert == ALERT_HIGH){   
         buzzerManager.startAlert(currentAlert);
         Serial.printf("Alert triggered: Level %d\n", (int)currentAlert);
     } else {

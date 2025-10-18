@@ -11,7 +11,7 @@ SensorManager::SensorManager() : ens160(0x53) {
     
     // Initialize sample buffer
     for (int i = 0; i < SAMPLES_PER_MINUTE; i++) {
-        sampleBuffer[i] = {0, 0, 0, false, 0};
+        sampleBuffer[i] = {0, 0, 0, 0};
     }
 }
 
@@ -71,8 +71,8 @@ bool SensorManager::readSensors(SensorData& data) {
     
     // Get ENS160 readings
     uint16_t eco2 = ens160.geteCO2();
-    uint16_t tvoc = ens160.getTVOC();
-    uint8_t aqi = ens160.getAQI();
+    // uint16_t tvoc = ens160.getTVOC();
+    // uint8_t aqi = ens160.getAQI();
     
     // Populate sensor data structure
     data.co2_ppm = eco2;
@@ -112,19 +112,18 @@ SensorData SensorManager::getLastReading() {
     return lastReading;
 }
 
-AlertLevel SensorManager::getAlertLevel(float co2_ppm) {
-    if (co2_ppm <= CO2_THRESHOLD_HIGH) {
+AlertLevel SensorManager::getAlertLevel(AverageData& data) {
+    if (data.avg_co2_ppm <= CO2_THRESHOLD_HIGH*2.5 && data.avg_humidity_percent <= HUMIDITY_THRESHOLD_HIGH && data.avg_temperature_celsius <= TEMP_THRESHOLD_HIGH) {
         return ALERT_NONE;
-    } else if (co2_ppm <= CO2_THRESHOLD_HIGH * 1.5) {
+    } else if (CO2_THRESHOLD_HIGH * 2.5 < data.avg_co2_ppm <= CO2_THRESHOLD_HIGH * 5 || data.avg_temperature_celsius > TEMP_THRESHOLD_HIGH) {
         return ALERT_LOW;
-    } else if (co2_ppm <= CO2_THRESHOLD_HIGH * 2.0) {
+    } else if (CO2_THRESHOLD_HIGH* 5 < data.avg_co2_ppm <= CO2_THRESHOLD_HIGH * 7.5 || data.avg_humidity_percent >  HUMIDITY_THRESHOLD_HIGH) {
         return ALERT_MEDIUM;
     } else {
         return ALERT_HIGH;
     }
 }
 
-// Add sample to buffer for averaging
 void SensorManager::addSample(const SensorData& data) {
     if (!data.valid) {
         return;
@@ -172,12 +171,7 @@ AverageData SensorManager::calculateAverage() {
         avgData.avg_humidity_percent = sumHumidity / validSamples;
         avgData.avg_temperature_celsius = sumTemperature / validSamples;
         avgData.valid = true;
-        
-        Serial.printf("Average calculated - CO2: %.1f ppm, Temp: %.1f°C, Hum: %.1f%% (from %d samples)\n",
-                      avgData.avg_co2_ppm, 
-                      avgData.avg_temperature_celsius,
-                      avgData.avg_humidity_percent,
-                      validSamples);
+
     }
     
     return avgData;
@@ -190,34 +184,3 @@ void SensorManager::resetSamples() {
     Serial.println("Sample buffer reset");
 }
 
-// Check if average values exceed thresholds
-bool SensorManager::checkThresholds(const AverageData& avgData, bool& co2Alert, bool& tempAlert, bool& humidityAlert) {
-    if (!avgData.valid) {
-        co2Alert = false;
-        tempAlert = false;
-        humidityAlert = false;
-        return false;
-    }
-    
-    co2Alert = (avgData.avg_co2_ppm > CO2_THRESHOLD_HIGH);
-    tempAlert = (avgData.avg_temperature_celsius > TEMP_THRESHOLD_HIGH);
-    humidityAlert = (avgData.avg_humidity_percent > HUMIDITY_THRESHOLD_HIGH);
-    
-    bool anyAlert = co2Alert || tempAlert || humidityAlert;
-    
-    if (anyAlert) {
-        Serial.println("=== THRESHOLD ALERT ===");
-        if (co2Alert) {
-            Serial.printf("CO2 Alert: %.1f ppm > %d ppm\n", avgData.avg_co2_ppm, CO2_THRESHOLD_HIGH);
-        }
-        if (tempAlert) {
-            Serial.printf("Temperature Alert: %.1f°C > %.1f°C\n", avgData.avg_temperature_celsius, TEMP_THRESHOLD_HIGH);
-        }
-        if (humidityAlert) {
-            Serial.printf("Humidity Alert: %.1f%% > %.1f%%\n", avgData.avg_humidity_percent, HUMIDITY_THRESHOLD_HIGH);
-        }
-        Serial.println("=======================");
-    }
-    
-    return anyAlert;
-}
