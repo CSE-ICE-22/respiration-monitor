@@ -15,12 +15,8 @@ enum BLECommand {
     CMD_FORCE_SLEEP = 2,
     CMD_REQUEST_DATA = 3,
     CMD_RESET_ALERTS = 4,
-    // Add more commands as needed below
-    // CMD_CUSTOM_1 = 5,
-    // CMD_CUSTOM_2 = 6,
 };
 
-// Compact binary packet structure for BLE transmission (22 bytes total)
 struct SensorPacket {
     uint16_t co2;           // CO2 in ppm (2 bytes)
     int16_t humidity;       // Humidity * 10 (2 bytes) 
@@ -59,7 +55,6 @@ public:
     unsigned long getConnectionTime();
 };
 
-// Callback classes
 class ServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer);
     void onDisconnect(BLEServer* pServer);

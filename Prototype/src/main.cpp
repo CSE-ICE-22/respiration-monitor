@@ -1,9 +1,5 @@
 #include <Arduino.h>
-#include <esp_sleep.h>
-#include <esp_bt.h>
 #include <esp_bt_main.h>
-#include <esp_pm.h>
-#include <driver/gpio.h>
 
 #include "config.h"
 #include "sensor.h"
@@ -232,25 +228,6 @@ void handleBLECommands() {
     }
 }
 
-// ============================================================================
-// TEMPLATE: Handle control signals received from smartphone via BLE
-// ============================================================================
-// Add your custom command handling logic here. 
-// This function is called when a command is received from the smartphone app.
-//
-// To add a new command:
-// 1. Add the command enum to ble_comm.h (e.g., CMD_CUSTOM_1 = 5)
-// 2. Update the ControlCallbacks::onWrite() in ble_comm.cpp to parse the command
-// 3. Add your handler case below
-//
-// Example use cases:
-// - Adjust sensor thresholds
-// - Change sampling rate
-// - Enable/disable certain features
-// - Request specific data
-// - Control LED indicators
-// - Trigger calibration routines
-// ============================================================================
 void handleSmartphoneControlSignals(BLECommand command) {
     switch (command) {
         case CMD_MUTE_BUZZER:
@@ -281,33 +258,12 @@ void handleSmartphoneControlSignals(BLECommand command) {
             tempAlert = false;
             humidityAlert = false;
             break;
-        
-        // ---- Add your custom command handlers below ----
-        /*
-        case CMD_CUSTOM_1:
-            Serial.println("Executed: Custom command 1");
-            // Your custom logic here
-            // Example: Adjust CO2 threshold
-            // CO2_THRESHOLD_HIGH = newValue;
-            break;
-            
-        case CMD_CUSTOM_2:
-            Serial.println("Executed: Custom command 2");
-            // Your custom logic here
-            // Example: Change sampling rate
-            // SENSOR_READ_INTERVAL_MS = newValue;
-            break;
-        */
-        // ---- End custom commands ----
             
         default:
             Serial.printf("Unknown command: %d\n", (int)command);
             break;
     }
 }
-// ============================================================================
-// END TEMPLATE
-// ============================================================================
 
 void enterLightSleep() {
     // Disable BLE to save power
