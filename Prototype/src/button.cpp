@@ -4,21 +4,27 @@ ButtonManager buttonManager;
 
 volatile bool ButtonManager::wasPressed_flag = false;
 volatile bool ButtonManager::wasHeld_flag = false;
+volatile bool ButtonManager::buttonDown = false;
 volatile unsigned long ButtonManager::buttonPressTime = 0;
 volatile unsigned long ButtonManager::lastInterruptTime = 0;
 
 bool ButtonManager::begin() {
-    pinMode(BUTTON_PIN, INPUT);
-    attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, RISING);
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, FALLING);
     return true;
 }
 
 void ButtonManager::update() {
-    if (buttonPressTime > 0 && !wasHeld_flag) {
-        if (digitalRead(BUTTON_PIN) == HIGH && 
-            (esp_timer_get_time() / 1000 - buttonPressTime) >= BUTTON_HOLD_TIME_MS) {
+    if (buttonDown && !wasHeld_flag) {
+        if ((millis() - buttonPressTime) >= BUTTON_HOLD_TIME_MS) {
             wasHeld_flag = true;
+            wasPressed_flag = false;
         }
+    }
+    
+    if (buttonDown && digitalRead(BUTTON_PIN) == HIGH) {
+        buttonDown = false;
+        buttonPressTime = 0;
     }
 }
 
@@ -39,12 +45,14 @@ bool ButtonManager::wasHeld() {
 }
 
 void IRAM_ATTR ButtonManager::buttonISR() {
-    unsigned long currentTime = esp_timer_get_time() / 1000;
-    
-    if (currentTime - lastInterruptTime > BUTTON_DEBOUNCE_MS) {
-        Serial.println("Button pressed interrupt");
-        wasPressed_flag = true;
-        buttonPressTime = currentTime;
+    unsigned long currentTime = millis();
+
+    if ((currentTime - lastInterruptTime) > BUTTON_DEBOUNCE_MS) {
+        if (!buttonDown) {
+            wasPressed_flag = true;
+            buttonDown = true;
+            buttonPressTime = currentTime;
+        }
         lastInterruptTime = currentTime;
     }
 }

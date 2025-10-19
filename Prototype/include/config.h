@@ -4,12 +4,12 @@
 // Pin definitions
 #define I2C_SDA_PIN         8
 #define I2C_SCL_PIN         9
-#define BUTTON_PIN          10
+#define BUTTON_PIN          0
 #define BUZZER_PIN          20
 
-#define CO2_THRESHOLD_HIGH       1000   // Alert if average CO2 > 1000 ppm
-#define TEMP_THRESHOLD_HIGH      40.0   // Alert if average temperature > 30°C
-#define HUMIDITY_THRESHOLD_HIGH  80.0   // Alert if average humidity > 70%
+#define CO2_THRESHOLD_HIGH       1000
+#define TEMP_THRESHOLD_HIGH      40.0
+#define HUMIDITY_THRESHOLD_HIGH  80.0
 
 // Alert levels
 enum AlertLevel {

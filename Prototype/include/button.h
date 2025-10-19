@@ -8,6 +8,7 @@ class ButtonManager {
 private:
     static volatile bool wasPressed_flag;
     static volatile bool wasHeld_flag;
+    static volatile bool buttonDown;
     static volatile unsigned long buttonPressTime;
     static volatile unsigned long lastInterruptTime;
     static void IRAM_ATTR buttonISR();

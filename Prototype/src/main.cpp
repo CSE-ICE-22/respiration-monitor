@@ -108,9 +108,8 @@ void setupSystem() {
         return;
     }
     
-    // Configure deep sleep wakeup source (button on GPIO 10)
-    // ESP32-C3 uses GPIO wakeup instead of ext0
-    gpio_wakeup_enable((gpio_num_t)BUTTON_PIN, GPIO_INTR_HIGH_LEVEL);
+    // Configure GPIO wakeup for light sleep (level-triggered)
+    gpio_wakeup_enable((gpio_num_t)BUTTON_PIN, GPIO_INTR_LOW_LEVEL);
     esp_sleep_enable_gpio_wakeup();
     
     Serial.println("System initialized successfully");
@@ -329,9 +328,12 @@ void enterDeepSleep() {
     Serial.println("Entering deep sleep mode");
     
     // Wait for button release
-    while (digitalRead(BUTTON_PIN) == HIGH) {
+    while (digitalRead(BUTTON_PIN) == LOW) {
         delay(100);
     }
+    
+    uint64_t button_mask = (1ULL << BUTTON_PIN);
+    esp_deep_sleep_enable_gpio_wakeup(button_mask, ESP_GPIO_WAKEUP_GPIO_LOW);
     
     // Play goodbye sound
     buzzerManager.playWelcomeSound();
