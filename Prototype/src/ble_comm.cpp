@@ -1,5 +1,7 @@
 #include "ble_comm.h"
 #include "buzzer.h"
+#include <esp_gap_ble_api.h>
+#include <nvs_flash.h>
 
 BLEManager bleManager;
 
@@ -25,8 +27,32 @@ bool BLEManager::begin() {
     // Ensure global pointer is set
     g_bleManager = this;
     
+    // Initialize NVS for storing bonding information
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated, erase and reinitialize
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+    
     // Initialize BLE
     BLEDevice::init(BLE_DEVICE_NAME);
+    
+    // Configure BLE Security with proper authentication
+    BLESecurity *pSecurity = new BLESecurity();
+    // Use BOND only (without MITM) for better reconnection stability with Just Works pairing
+    // MITM + NO_IO causes reconnection issues
+    pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND); 
+    pSecurity->setCapability(ESP_IO_CAP_NONE); // No input/output capability (Just Works pairing)
+    pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    pSecurity->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    pSecurity->setKeySize(16);
+    
+    // Set security callbacks
+    BLEDevice::setSecurityCallbacks(new SecurityCallbacks());
+    
+    Serial.println("BLE Security configured with bonding (reconnection-friendly)");
     
     // Create BLE Server
     server = BLEDevice::createServer();
@@ -180,8 +206,14 @@ void ServerCallbacks::onDisconnect(BLEServer* pServer) {
     if (g_bleManager != nullptr) {
         g_bleManager->deviceConnected = false;
         Serial.println("BLE client disconnected");
-
-        pServer->startAdvertising();
+        
+        // Small delay before restarting advertising to allow proper cleanup
+        delay(500);
+        
+        // Restart advertising for reconnection
+        BLEAdvertising* pAdvertising = pServer->getAdvertising();
+        pAdvertising->start();
+        Serial.println("Advertising restarted - ready for reconnection");
     } else {
         Serial.println("Error: g_bleManager is null in onDisconnect");
     }
@@ -225,4 +257,43 @@ void ControlCallbacks::onWrite(BLECharacteristic* pCharacteristic) {
                 break;
         }
     }
+}
+
+// Security callback implementations
+uint32_t SecurityCallbacks::onPassKeyRequest() {
+    Serial.println("PassKeyRequest - returning 0");
+    return 0;
+}
+
+void SecurityCallbacks::onPassKeyNotify(uint32_t pass_key) {
+    Serial.printf("PassKeyNotify: %d\n", pass_key);
+}
+
+bool SecurityCallbacks::onSecurityRequest() {
+    Serial.println("SecurityRequest - accepting");
+    return true;
+}
+
+void SecurityCallbacks::onAuthenticationComplete(esp_ble_auth_cmpl_t auth_cmpl) {
+    if (auth_cmpl.success) {
+        Serial.println("✓ BLE Authentication successful");
+    } else {
+        Serial.printf("✗ BLE Authentication failed! Reason: 0x%x\n", auth_cmpl.fail_reason);
+        // Common fail reasons:
+        // 0x01: Passkey entry failed
+        // 0x02: OOB not available
+        // 0x03: Authentication requirements
+        // 0x04: Confirm value failed
+        // 0x05: Pairing not supported
+        // 0x06: Encryption key size
+        // 0x08: SMP command not supported
+        // 0x09: Unspecified reason
+        // 0x0a: Repeated attempts
+        // 0x0c: DHKey check failed
+    }
+}
+
+bool SecurityCallbacks::onConfirmPIN(uint32_t pin) {
+    Serial.printf("ConfirmPIN: %d\n", pin);
+    return true;
 }

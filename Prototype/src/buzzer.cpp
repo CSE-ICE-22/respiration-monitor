@@ -77,10 +77,8 @@ void BuzzerManager::update() {
             ledcWrite(0, 0); // Turn buzzer off
         }
 
-        // Stop after a fixed number of repeats
-        if (currentRepeat >= 10) {
-            mute();
-        }
+        // Buzzer continues indefinitely until manually muted or alert cleared
+        // No auto-mute behavior
     }
 }
 

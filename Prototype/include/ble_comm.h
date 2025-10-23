@@ -15,6 +15,7 @@ enum BLECommand {
     CMD_FORCE_SLEEP = 2,
     CMD_REQUEST_DATA = 3,
     CMD_RESET_ALERTS = 4,
+    CMD_UNMUTE_BUZZER = 5,
 };
 
 struct SensorPacket {
@@ -62,6 +63,14 @@ class ServerCallbacks : public BLEServerCallbacks {
 
 class ControlCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* pCharacteristic);
+};
+
+class SecurityCallbacks : public BLESecurityCallbacks {
+    uint32_t onPassKeyRequest();
+    void onPassKeyNotify(uint32_t pass_key);
+    bool onSecurityRequest();
+    void onAuthenticationComplete(esp_ble_auth_cmpl_t auth_cmpl);
+    bool onConfirmPIN(uint32_t pin);
 };
 
 extern BLEManager bleManager;

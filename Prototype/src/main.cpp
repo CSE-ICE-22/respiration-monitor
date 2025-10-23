@@ -206,13 +206,14 @@ void processAlerts() {
     }
     
     AlertLevel alert = sensorManager.getAlertLevel(currentAverageData); 
-    if (alert == ALERT_HIGH){   
-        buzzerManager.startAlert(currentAlert);
-        Serial.printf("Alert triggered: Level %d\n", (int)currentAlert);
+    currentAlert = alert;  // Update current alert level
+    
+    if (alert == ALERT_HIGH) {   
+        buzzerManager.startAlert(alert);
+        Serial.printf("Alert triggered: Level %d\n", (int)alert);
     } else {
         // No alerts, stop buzzer if it was ringing
         if (currentAlert != ALERT_NONE) {
-            currentAlert = ALERT_NONE;
             buzzerManager.stopAlert();
             Serial.println("Alert cleared");
         }
@@ -247,6 +248,10 @@ void handleSmartphoneControlSignals(BLECommand command) {
             } else if (currentSensorData.valid) {
                 bleManager.sendSensorData(currentSensorData, currentAlert);
             }
+            break;
+        
+        case CMD_UNMUTE_BUZZER:
+            buzzerManager.unmute();
             break;
             
         case CMD_RESET_ALERTS:
