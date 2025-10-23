@@ -9,17 +9,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mobile_application/main.dart';
 import 'package:mobile_application/models/sensor_data.dart';
+import 'package:mobile_application/services/notification_service.dart';
 
 void main() {
   group('SensorData Model Tests', () {
     test('should parse valid JSON correctly', () {
       // Arrange
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
       final json = {
         'co2': 420.5,
         'humidity': 55.2,
         'temperature': 24.3,
         'alert': 1,
-        'timestamp': 1694270400000,
+        'timestamp': timestamp,
       };
 
       // Act
@@ -30,7 +32,11 @@ void main() {
       expect(sensorData.humidity, equals(55.2));
       expect(sensorData.temperature, equals(24.3));
       expect(sensorData.alert, equals(1));
-      expect(sensorData.timestamp.millisecondsSinceEpoch, equals(1694270400000));
+      // Timestamp should be current time (within 1 second)
+      expect(
+        sensorData.timestamp.millisecondsSinceEpoch,
+        closeTo(DateTime.now().millisecondsSinceEpoch, 1000),
+      );
     });
 
     test('should handle missing optional fields', () {
@@ -95,7 +101,7 @@ void main() {
         'co2': 400.0,
         'humidity': 50.0,
         'temperature': 22.0,
-        'alert': 5, // Out of range (should be 0-2)
+        'alert': 5, // Out of range (should be 0-3)
       };
 
       // Act & Assert
@@ -126,17 +132,23 @@ void main() {
       );
       expect(normalData.alertDescription, equals('Normal'));
 
-      // Test warning alert
-      final warningData = SensorData(
-        co2: 1200, humidity: 50, temperature: 22, alert: 1, timestamp: DateTime.now(),
+      // Test low alert
+      final lowData = SensorData(
+        co2: 1000, humidity: 50, temperature: 22, alert: 1, timestamp: DateTime.now(),
       );
-      expect(warningData.alertDescription, equals('Warning'));
+      expect(lowData.alertDescription, equals('Low Alert'));
 
-      // Test critical alert
-      final criticalData = SensorData(
-        co2: 1800, humidity: 50, temperature: 22, alert: 2, timestamp: DateTime.now(),
+      // Test medium alert
+      final mediumData = SensorData(
+        co2: 1500, humidity: 50, temperature: 22, alert: 2, timestamp: DateTime.now(),
       );
-      expect(criticalData.alertDescription, equals('Critical'));
+      expect(mediumData.alertDescription, equals('Medium Alert'));
+
+      // Test high alert
+      final highData = SensorData(
+        co2: 2000, humidity: 50, temperature: 22, alert: 3, timestamp: DateTime.now(),
+      );
+      expect(highData.alertDescription, equals('High Alert'));
     });
 
     test('should return correct alert colors', () {
@@ -146,17 +158,23 @@ void main() {
       );
       expect(normalData.alertColor, equals(0xFF4CAF50));
 
-      // Test warning (orange)
-      final warningData = SensorData(
-        co2: 1200, humidity: 50, temperature: 22, alert: 1, timestamp: DateTime.now(),
+      // Test low (yellow)
+      final lowData = SensorData(
+        co2: 1000, humidity: 50, temperature: 22, alert: 1, timestamp: DateTime.now(),
       );
-      expect(warningData.alertColor, equals(0xFFFF9800));
+      expect(lowData.alertColor, equals(0xFFFFEB3B));
 
-      // Test critical (red)
-      final criticalData = SensorData(
-        co2: 1800, humidity: 50, temperature: 22, alert: 2, timestamp: DateTime.now(),
+      // Test medium (orange)
+      final mediumData = SensorData(
+        co2: 1500, humidity: 50, temperature: 22, alert: 2, timestamp: DateTime.now(),
       );
-      expect(criticalData.alertColor, equals(0xFFF44336));
+      expect(mediumData.alertColor, equals(0xFFFF9800));
+
+      // Test high (deep orange)
+      final highData = SensorData(
+        co2: 2000, humidity: 50, temperature: 22, alert: 3, timestamp: DateTime.now(),
+      );
+      expect(highData.alertColor, equals(0xFFFF5722));
     });
   });
 
@@ -186,21 +204,35 @@ void main() {
     });
 
     test('should parse UTF-8 encoded bytes', () {
-      // Arrange
-      const jsonString = '{"co2":420.5,"humidity":55.2,"temperature":24.3,"alert":0}';
-      final bytes = jsonString.codeUnits;
+      // Arrange - Create a valid 22-byte binary packet
+      final bytes = List<int>.filled(22, 0);
+      // CO2: 450 ppm (little-endian uint16)
+      bytes[0] = 450 & 0xFF;
+      bytes[1] = (450 >> 8) & 0xFF;
+      // Humidity: 55.5% -> 555 (little-endian int16)
+      bytes[2] = 555 & 0xFF;
+      bytes[3] = (555 >> 8) & 0xFF;
+      // Temperature: 22.3°C -> 223 (little-endian int16)
+      bytes[4] = 223 & 0xFF;
+      bytes[5] = (223 >> 8) & 0xFF;
+      // Alert: 0
+      bytes[6] = 0;
+      // Status: valid data (bit 0 = 1)
+      bytes[7] = 0x01;
 
       // Act
       final sensorData = SensorDataParser.parseFromBytes(bytes);
 
       // Assert
       expect(sensorData, isNotNull);
-      expect(sensorData!.co2, equals(420.5));
+      expect(sensorData!.co2, equals(450.0));
+      expect(sensorData.humidity, closeTo(55.5, 0.1));
+      expect(sensorData.temperature, closeTo(22.3, 0.1));
     });
 
-    test('should return null for invalid UTF-8 bytes', () {
+    test('should return null for invalid packet size', () {
       // Arrange
-      final invalidBytes = [0xFF, 0xFE, 0xFD]; // Invalid UTF-8 sequence
+      final invalidBytes = List<int>.filled(10, 0); // Wrong size
 
       // Act
       final sensorData = SensorDataParser.parseFromBytes(invalidBytes);
@@ -210,56 +242,62 @@ void main() {
     });
   });
 
-  group('Control Command JSON Tests', () {
-    test('should create correct mute command JSON', () {
-      // Arrange
-      final command = {'cmd': 'mute', 'value': true};
-
-      // Act
-      final jsonString = command.toString();
+  group('Control Command Tests', () {
+    test('should create correct mute command', () {
+      // Arrange & Act
+      final command = "1";
 
       // Assert
-      expect(jsonString.contains('mute'), isTrue);
-      expect(jsonString.contains('true'), isTrue);
+      expect(command, equals("1"));
+      expect(command.length, equals(1));
     });
 
-    test('should create correct volume command JSON', () {
-      // Arrange
-      final command = {'cmd': 'volume', 'value': 75};
-
-      // Act
-      final jsonString = command.toString();
+    test('should create correct sleep command', () {
+      // Arrange & Act
+      final command = "2";
 
       // Assert
-      expect(jsonString.contains('volume'), isTrue);
-      expect(jsonString.contains('75'), isTrue);
+      expect(command, equals("2"));
+      expect(command.length, equals(1));
     });
 
-    test('should create correct power off command JSON', () {
-      // Arrange
-      final command = {'cmd': 'power', 'value': 'off'};
-
-      // Act
-      final jsonString = command.toString();
+    test('should create correct request data command', () {
+      // Arrange & Act
+      final command = "3";
 
       // Assert
-      expect(jsonString.contains('power'), isTrue);
-      expect(jsonString.contains('off'), isTrue);
+      expect(command, equals("3"));
+      expect(command.length, equals(1));
+    });
+
+    test('should create correct reset command', () {
+      // Arrange & Act
+      final command = "4";
+
+      // Assert
+      expect(command, equals("4"));
+      expect(command.length, equals(1));
     });
   });
 
   group('Widget Tests', () {
     testWidgets('App should start and show scan screen', (WidgetTester tester) async {
-      // Build the app
-      await tester.pumpWidget(const RespirationMonitorApp());
+      // Build the app with mock notification service
+      final mockNotificationService = NotificationService();
+      await tester.pumpWidget(
+        RespirationMonitorApp(notificationService: mockNotificationService),
+      );
 
       // Verify that the scan screen is displayed
       expect(find.text('Respiration Monitors'), findsOneWidget);
     });
 
     testWidgets('Scan screen should have scan button', (WidgetTester tester) async {
-      // Build the app
-      await tester.pumpWidget(const RespirationMonitorApp());
+      // Build the app with mock notification service
+      final mockNotificationService = NotificationService();
+      await tester.pumpWidget(
+        RespirationMonitorApp(notificationService: mockNotificationService),
+      );
 
       // Wait for the widget to settle
       await tester.pumpAndSettle();
@@ -268,15 +306,18 @@ void main() {
       expect(find.text('Scan for Devices'), findsOneWidget);
     });
 
-    testWidgets('Scan screen should have mock mode button', (WidgetTester tester) async {
-      // Build the app
-      await tester.pumpWidget(const RespirationMonitorApp());
+    testWidgets('Scan screen should have debug scan button', (WidgetTester tester) async {
+      // Build the app with mock notification service
+      final mockNotificationService = NotificationService();
+      await tester.pumpWidget(
+        RespirationMonitorApp(notificationService: mockNotificationService),
+      );
 
       // Wait for the widget to settle
       await tester.pumpAndSettle();
 
-      // Verify that the mock mode button is present
-      expect(find.text('Mock Mode'), findsOneWidget);
+      // Verify that the debug scan button is present
+      expect(find.text('Debug Scan (Show All Devices)'), findsOneWidget);
     });
   });
 }

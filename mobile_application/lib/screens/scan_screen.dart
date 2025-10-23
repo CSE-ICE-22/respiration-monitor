@@ -6,7 +6,8 @@ import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../services/ble_service.dart';
-import 'dashboard_screen.dart';
+import 'dashboard_screen_new.dart';
+import 'session_history_screen.dart';
 
 /// Screen for scanning and connecting to RespirationMonitor devices
 class ScanScreen extends StatefulWidget {
@@ -39,13 +40,33 @@ class _ScanScreenState extends State<ScanScreen> {
   Future<void> _initializeBle() async {
     final bleService = context.read<BleService>();
     
+    // Check if already connected (shouldn't show scan screen if connected)
+    if (bleService.connectionState == BleConnectionState.connected) {
+      print('✅ Already connected, navigating to dashboard');
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => const DashboardScreen(),
+          ),
+        );
+      }
+      return;
+    }
+    
     // Listen to connection state changes
     _connectionSubscription = bleService.connectionStateStream.listen((state) {
       if (mounted) {
+        print('🔗 Scan screen received connection state: $state');
+        
         setState(() {
           if (state == BleConnectionState.connected) {
+            print('✅ Connected! Navigating to dashboard...');
             _connectingDeviceId = null;
             _errorMessage = null;
+            
+            // Stop any ongoing scans
+            bleService.stopScan();
+            
             // Navigate to dashboard
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
@@ -53,8 +74,15 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             );
           } else if (state == BleConnectionState.disconnected && _connectingDeviceId != null) {
+            print('❌ Connection failed or disconnected');
             _connectingDeviceId = null;
-            _errorMessage = 'Failed to connect to device';
+            _errorMessage = 'Failed to connect to device. The device may be:\n'
+                           '• Already connected to another phone\n'
+                           '• Out of range\n'
+                           '• Powered off\n\n'
+                           'Please try again or check the device.';
+          } else if (state == BleConnectionState.connecting) {
+            print('🔗 Connecting...');
           }
         });
       }
@@ -277,39 +305,6 @@ class _ScanScreenState extends State<ScanScreen> {
     _initializeBle();
   }
 
-  void _showMockModeDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Mock Mode'),
-          content: const Text(
-            'Mock mode allows you to test the app without a physical RespirationMonitor device. '
-            'Simulated sensor data will be generated for demonstration purposes.'
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Navigate to dashboard with mock mode
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(
-                    builder: (context) => const DashboardScreen(mockMode: true),
-                  ),
-                );
-              },
-              child: const Text('Enable Mock Mode'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -319,6 +314,17 @@ class _ScanScreenState extends State<ScanScreen> {
       appBar: AppBar(
         title: const Text('Respiration Monitors'),
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const SessionHistoryScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.history),
+            tooltip: 'View Past Data',
+          ),
           IconButton(
             onPressed: _showHelpDialog,
             icon: const Icon(Icons.help_outline),
@@ -351,24 +357,29 @@ class _ScanScreenState extends State<ScanScreen> {
                         ),
                 ),
                 const SizedBox(height: 8),
-                // Second row - debug and mock buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: bleService.isScanning ? null : _startDebugScan,
-                        child: const Text('Debug Scan'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _showMockModeDialog,
-                        icon: const Icon(Icons.developer_mode),
-                        label: const Text('Mock Mode'),
-                      ),
-                    ),
-                  ],
+                // View Past Data button
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const SessionHistoryScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.history),
+                    label: const Text('View Past Data'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Debug button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: bleService.isScanning ? null : _startDebugScan,
+                    child: const Text('Debug Scan (Show All Devices)'),
+                  ),
                 ),
               ],
             ),

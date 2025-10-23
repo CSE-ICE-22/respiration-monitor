@@ -255,7 +255,7 @@ class _TimeSeriesChartState extends State<TimeSeriesChart> {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 40,
-              interval: spots.length > 10 ? (spots.length / 5).ceil().toDouble() : null,
+              interval: _calculateBottomInterval(),
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
                 if (index >= 0 && index < widget.data.length) {
@@ -337,6 +337,8 @@ class _TimeSeriesChartState extends State<TimeSeriesChart> {
           ),
           handleBuiltInTouches: true,
         ),
+        minX: 0,
+        maxX: widget.data.isNotEmpty ? (widget.data.length - 1).toDouble() : 0,
         minY: _getMinY(),
         maxY: _getMaxY(),
       ),
@@ -407,6 +409,21 @@ class _TimeSeriesChartState extends State<TimeSeriesChart> {
       default:
         return 10;
     }
+  }
+
+  double _calculateBottomInterval() {
+    final dataLength = widget.data.length;
+    
+    // Show fewer labels as data grows to prevent cramping
+    if (dataLength <= 5) return 1;
+    if (dataLength <= 10) return 2;
+    if (dataLength <= 20) return 4;
+    if (dataLength <= 40) return 8;
+    if (dataLength <= 80) return 16;
+    if (dataLength <= 160) return 32;
+    
+    // For very large datasets, show labels at ~5-6 positions
+    return (dataLength / 5).ceilToDouble();
   }
 
   double _getMinY() {

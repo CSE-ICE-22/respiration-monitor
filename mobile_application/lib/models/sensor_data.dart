@@ -191,20 +191,27 @@ class SensorDataParser {
 
   /// Parses raw bytes from ESP32 SensorPacket to a SensorData object
   /// 
-  /// ESP32 sends binary data in SensorPacket format (16 bytes total):
-  /// uint16_t co2;           // CO2 in ppm (2 bytes)
-  /// int16_t humidity;       // Humidity * 10 (2 bytes) 
-  /// int16_t temperature;    // Temperature * 10 (2 bytes)
-  /// uint8_t alert;          // Alert level (1 byte)
-  /// uint8_t status;         // Status flags (1 byte)
-  /// uint32_t timestamp;     // Timestamp in seconds since boot (4 bytes)
-  /// uint32_t sequence;      // Sequence number (4 bytes)
+  /// ESP32 sends binary data in SensorPacket format (20 or 22 bytes):
+  /// uint16_t co2;           // CO2 in ppm (2 bytes, offset 0)
+  /// int16_t humidity;       // Humidity * 10 (2 bytes, offset 2) 
+  /// int16_t temperature;    // Temperature * 10 (2 bytes, offset 4)
+  /// uint8_t alert;          // Alert level 0-3 (1 byte, offset 6)
+  /// uint8_t status;         // Status flags (1 byte, offset 7)
+  /// uint32_t timestamp;     // Timestamp in seconds since boot (4 bytes, offset 8)
+  /// uint32_t sequence;      // Sequence number (4 bytes, offset 12)
+  /// uint8_t[4-6] reserved;  // Reserved for future use (4-6 bytes, offset 16)
   static SensorData? parseFromBytes(List<int> bytes) {
     try {
-      // Validate packet size
-      if (bytes.length != 16) {
-        print('Invalid binary packet size: expected 16 bytes, got ${bytes.length}');
+      // Validate packet size - accept both 20 and 22 byte packets
+      // (ESP32 may send 20 bytes instead of 22)
+      if (bytes.length < 16) {
+        print('Invalid binary packet size: minimum 16 bytes required, got ${bytes.length}');
         return null;
+      }
+      
+      if (bytes.length != 20 && bytes.length != 22) {
+        print('Warning: unexpected packet size ${bytes.length} bytes (expected 20 or 22)');
+        // Continue parsing anyway if we have at least the core data
       }
       
       // Parse binary data (little-endian format)
@@ -214,8 +221,9 @@ class SensorDataParser {
       final int humidityRaw = byteData.getInt16(2, Endian.little);
       final int temperatureRaw = byteData.getInt16(4, Endian.little);
       final int alert = byteData.getUint8(6);
-      // Status flags available at byteData.getUint8(7) if needed
-      // Skip timestamp and sequence for now - we use DateTime.now()
+      final int status = byteData.getUint8(7);
+      final int deviceTimestamp = byteData.getUint32(8, Endian.little);
+      final int sequence = byteData.getUint32(12, Endian.little);
       
       // Convert scaled values back to doubles
       final double humidity = humidityRaw / 10.0;
@@ -232,12 +240,29 @@ class SensorDataParser {
         return null;
       }
       
-      if (alert < 0 || alert > 4) {
+      if (alert < 0 || alert > 3) {
         print('Alert value out of range: $alert');
         return null;
       }
       
-      print('Parsed binary sensor data - CO2: ${co2}ppm, Temp: ${temperature}°C, Humidity: ${humidity}%, Alert: $alert');
+      // Parse status flags
+      final bool isValidData = (status & 0x01) != 0;
+      final bool isMuted = (status & 0x02) != 0;
+      final bool isAverage = (status & 0x80) != 0;
+      
+      if (!isValidData) {
+        print('Received invalid sensor data packet');
+        return null;
+      }
+      
+      print('Parsed ${bytes.length}-byte binary sensor data:');
+      print('  CO2: ${co2}ppm (raw: 0x${co2.toRadixString(16)})');
+      print('  Temp: ${temperature}°C (raw: 0x${temperatureRaw.toRadixString(16)})');
+      print('  Humidity: ${humidity}% (raw: 0x${humidityRaw.toRadixString(16)})');
+      print('  Alert: $alert');
+      print('  Status: 0x${status.toRadixString(16)} - Valid=$isValidData, Muted=$isMuted, Average=$isAverage');
+      print('  Device Timestamp: ${deviceTimestamp}s');
+      print('  Sequence: $sequence');
       
       return SensorData(
         co2: co2.toDouble(),
@@ -251,5 +276,20 @@ class SensorDataParser {
       print('Failed to parse binary sensor data: $e');
       return null;
     }
+  }
+  
+  /// Get mute status from status byte
+  static bool isMutedFromStatus(int status) {
+    return (status & 0x02) != 0;
+  }
+  
+  /// Get data validity from status byte
+  static bool isValidFromStatus(int status) {
+    return (status & 0x01) != 0;
+  }
+  
+  /// Get data type from status byte (instantaneous vs average)
+  static bool isAverageFromStatus(int status) {
+    return (status & 0x80) != 0;
   }
 }
