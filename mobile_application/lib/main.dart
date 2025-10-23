@@ -1,20 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/ble_service.dart';
+import 'services/session_service.dart';
+import 'services/notification_service.dart';
 import 'screens/scan_screen.dart';
 
-void main() {
-  runApp(const RespirationMonitorApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize notification service
+  final notificationService = NotificationService();
+  await notificationService.initialize();
+  
+  runApp(RespirationMonitorApp(notificationService: notificationService));
 }
 
 class RespirationMonitorApp extends StatelessWidget {
-  const RespirationMonitorApp({super.key});
+  final NotificationService notificationService;
+  
+  const RespirationMonitorApp({
+    super.key,
+    required this.notificationService,
+  });
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => BleService()),
+        ChangeNotifierProvider(create: (_) => SessionService()),
+        Provider<NotificationService>.value(value: notificationService),
       ],
       child: MaterialApp(
         title: 'Respiration Monitor',
